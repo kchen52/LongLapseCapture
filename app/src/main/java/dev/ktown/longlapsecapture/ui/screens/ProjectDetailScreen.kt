@@ -18,6 +18,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -123,7 +124,16 @@ fun ProjectDetailScreen(
             Text("Timeline", style = MaterialTheme.typography.titleSmall)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(entries, key = { it.id }) { entry ->
-                    EntryRow(entry = entry)
+                    EntryRow(
+                        entry = entry,
+                        isReference = project?.referencePhotoPath == entry.filePath,
+                        onSetReference = {
+                            scope.launch {
+                                repository.updateReferencePhoto(projectId, entry.filePath)
+                                project = project?.copy(referencePhotoPath = entry.filePath)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -131,7 +141,11 @@ fun ProjectDetailScreen(
 }
 
 @Composable
-private fun EntryRow(entry: CaptureEntryEntity) {
+private fun EntryRow(
+    entry: CaptureEntryEntity,
+    isReference: Boolean,
+    onSetReference: () -> Unit
+) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -147,6 +161,21 @@ private fun EntryRow(entry: CaptureEntryEntity) {
             Column {
                 Text(entry.localDate, style = MaterialTheme.typography.bodyLarge)
                 Text(entry.filePath, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (isReference) {
+                        Text(
+                            text = "Reference photo",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        TextButton(onClick = onSetReference) {
+                            Text("Use as reference")
+                        }
+                    }
+                }
             }
         }
     }
