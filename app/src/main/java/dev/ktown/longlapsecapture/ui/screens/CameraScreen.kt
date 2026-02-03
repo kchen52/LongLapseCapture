@@ -28,6 +28,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -51,6 +55,7 @@ import androidx.core.view.WindowInsetsCompat
 import coil3.compose.AsyncImage
 import dev.ktown.longlapsecapture.data.db.ProjectEntity
 import dev.ktown.longlapsecapture.data.repository.LonglapseRepository
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.time.LocalDate
@@ -70,6 +75,7 @@ fun CameraScreen(
     var cameraSelector by remember { mutableStateOf(CameraSelector.DEFAULT_BACK_CAMERA) }
     var subjectOnlyOverlay by remember { mutableStateOf(false) }
     var hasTodayCapture by remember { mutableStateOf(false) }
+    val flipRotationY = remember { Animatable(0f) }
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -177,11 +183,20 @@ fun CameraScreen(
             }
         } else {
             Box(modifier = Modifier.fillMaxSize()) {
-                AndroidView(
-                    factory = { previewView },
-                    modifier = Modifier.fillMaxSize()
-                )
-                project?.let { p ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            rotationY = flipRotationY.value
+                            transformOrigin = TransformOrigin.Center
+                            cameraDistance = 6000f
+                        }
+                ) {
+                    AndroidView(
+                        factory = { previewView },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    project?.let { p ->
                     p.referencePhotoPath?.let { reference ->
                         if (!subjectOnlyOverlay) {
                             AsyncImage(
@@ -202,6 +217,7 @@ fun CameraScreen(
                             }
                         }
                     }
+                }
                 }
                 Box(
                     modifier = Modifier
@@ -272,7 +288,9 @@ fun CameraScreen(
                         )
                     }
                     androidx.compose.material3.IconButton(
-                        modifier = Modifier.align(Alignment.CenterEnd),
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(56.dp),
                         onClick = {
                             val activeProject = project ?: return@IconButton
                             val newSelector =
@@ -281,14 +299,18 @@ fun CameraScreen(
                                 } else {
                                     CameraSelector.DEFAULT_BACK_CAMERA
                                 }
-                            cameraSelector = newSelector
                             scope.launch {
+                                flipRotationY.animateTo(90f, tween(150))
+                                cameraSelector = newSelector
                                 val facing = if (newSelector == CameraSelector.DEFAULT_FRONT_CAMERA) {
                                     "front"
                                 } else {
                                     "back"
                                 }
                                 repository.updatePreferredCameraFacing(activeProject.id, facing)
+                                delay(600)
+                                flipRotationY.animateTo(180f, tween(150))
+                                flipRotationY.snapTo(0f)
                             }
                         }
                     ) {
