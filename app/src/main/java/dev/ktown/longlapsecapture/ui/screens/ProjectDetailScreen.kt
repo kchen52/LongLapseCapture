@@ -78,6 +78,9 @@ fun ProjectDetailScreen(
             )
         }
     ) { padding ->
+        val today = remember { repository.todayString() }
+        val hasTodayCapture = entries.any { it.localDate == today }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -96,7 +99,10 @@ fun ProjectDetailScreen(
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onOpenCamera) {
+                Button(
+                    onClick = onOpenCamera,
+                    enabled = !hasTodayCapture
+                ) {
                     Text("Capture today")
                 }
                 Button(

@@ -12,5 +12,6 @@ data class ProjectEntity(
     val reminderHour: Int?,
     val reminderMinute: Int?,
     val lastCaptureDate: String?,
-    val lastCapturePath: String?
+    val lastCapturePath: String?,
+    val preferredCameraFacing: String?
 )

@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,10 +33,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import dev.ktown.longlapsecapture.data.db.ProjectEntity
@@ -55,6 +59,9 @@ fun CameraScreen(
     var project by remember { mutableStateOf<ProjectEntity?>(null) }
     var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
     val previewView = remember { PreviewView(context) }
+    var cameraSelector by remember { mutableStateOf(CameraSelector.DEFAULT_BACK_CAMERA) }
+    var subjectOnlyOverlay by remember { mutableStateOf(false) }
+    var hasTodayCapture by remember { mutableStateOf(false) }
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -75,10 +82,17 @@ fun CameraScreen(
     BackHandler(onBack = onBack)
 
     LaunchedEffect(projectId) {
-        project = repository.getProject(projectId)
+        val loaded = repository.getProject(projectId)
+        project = loaded
+        cameraSelector = if (loaded?.preferredCameraFacing == "front") {
+            CameraSelector.DEFAULT_FRONT_CAMERA
+        } else {
+            CameraSelector.DEFAULT_BACK_CAMERA
+        }
+        hasTodayCapture = loaded?.let { repository.hasCaptureForToday(it.id) } ?: false
     }
 
-    LaunchedEffect(hasCameraPermission) {
+    LaunchedEffect(hasCameraPermission, cameraSelector) {
         if (hasCameraPermission) {
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
             val executor = ContextCompat.getMainExecutor(context)
@@ -94,7 +108,7 @@ fun CameraScreen(
                     cameraProvider.unbindAll()
                     cameraProvider.bindToLifecycle(
                         lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        cameraSelector,
                         preview,
                         capture
                     )
@@ -109,21 +123,43 @@ fun CameraScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Button(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.Filled.ArrowBack,
-                    contentDescription = "Back"
-                )
-                Text("Back", modifier = Modifier.padding(start = 6.dp))
-            }
             Text(
                 text = project?.name ?: "Capture",
                 style = MaterialTheme.typography.titleMedium
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    val activeProject = project ?: return@Button
+                    val newSelector =
+                        if (cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
+                            CameraSelector.DEFAULT_FRONT_CAMERA
+                        } else {
+                            CameraSelector.DEFAULT_BACK_CAMERA
+                        }
+                    cameraSelector = newSelector
+                    scope.launch {
+                        val facing = if (newSelector == CameraSelector.DEFAULT_FRONT_CAMERA) {
+                            "front"
+                        } else {
+                            "back"
+                        }
+                        repository.updatePreferredCameraFacing(activeProject.id, facing)
+                    }
+                }) {
+                    Text("Flip camera")
+                }
+                if (project?.referencePhotoPath != null) {
+                    Button(onClick = { subjectOnlyOverlay = !subjectOnlyOverlay }) {
+                        Text(
+                            if (subjectOnlyOverlay) "Full reference" else "Subject only"
+                        )
+                    }
+                }
+            }
         }
 
         if (!hasCameraPermission) {
@@ -146,12 +182,25 @@ fun CameraScreen(
                     modifier = Modifier.fillMaxSize()
                 )
                 project?.referencePhotoPath?.let { reference ->
-                    AsyncImage(
-                        model = reference,
-                        contentDescription = "Reference overlay",
-                        modifier = Modifier.fillMaxSize(),
-                        alpha = 0.4f
-                    )
+                    if (!subjectOnlyOverlay) {
+                        AsyncImage(
+                            model = reference,
+                            contentDescription = "Reference overlay",
+                            modifier = Modifier.fillMaxSize(),
+                            alpha = 0.4f
+                        )
+                    } else {
+                        AsyncImage(
+                            model = reference,
+                            contentDescription = "Reference subject overlay",
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(240.dp)
+                                .clip(CircleShape),
+                            contentScale = ContentScale.Crop,
+                            alpha = 0.6f
+                        )
+                    }
                 }
                 Row(
                     modifier = Modifier
@@ -160,6 +209,7 @@ fun CameraScreen(
                     horizontalArrangement = Arrangement.Center
                 ) {
                     Button(
+                        enabled = !hasTodayCapture,
                         onClick = {
                             val capture = imageCapture ?: return@Button
                             val activeProject = project ?: return@Button
@@ -184,6 +234,7 @@ fun CameraScreen(
                                                 filePath = filePath,
                                                 setAsReference = shouldSetReference
                                             )
+                                            hasTodayCapture = true
                                             onBack()
                                         }
                                     }

@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [ProjectEntity::class, CaptureEntryEntity::class],
-    version = 1
+    version = 2
 )
 abstract class LonglapseDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao

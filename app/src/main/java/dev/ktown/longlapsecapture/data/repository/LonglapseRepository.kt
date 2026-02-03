@@ -58,7 +58,8 @@ class LonglapseRepository(
             reminderHour = reminderHour,
             reminderMinute = reminderMinute,
             lastCaptureDate = null,
-            lastCapturePath = null
+            lastCapturePath = null,
+            preferredCameraFacing = null
         )
         projectDao.insertProject(project)
         return project
@@ -71,21 +72,34 @@ class LonglapseRepository(
         setAsReference: Boolean
     ) {
         val dateString = localDate.format(dateFormatter)
-        val entry = CaptureEntryEntity(
-            projectId = projectId,
-            localDate = dateString,
-            filePath = filePath,
-            createdAt = System.currentTimeMillis()
-        )
-        captureEntryDao.insertEntry(entry)
-        projectDao.updateLastCapture(projectId, dateString, filePath)
-        if (setAsReference) {
-            projectDao.updateReferencePhoto(projectId, filePath)
+        // Prevent duplicate captures for the same day to avoid constraint crashes.
+        val existing = captureEntryDao.getEntryForDate(projectId, dateString)
+        if (existing == null) {
+            val entry = CaptureEntryEntity(
+                projectId = projectId,
+                localDate = dateString,
+                filePath = filePath,
+                createdAt = System.currentTimeMillis()
+            )
+            captureEntryDao.insertEntry(entry)
+            projectDao.updateLastCapture(projectId, dateString, filePath)
+            if (setAsReference) {
+                projectDao.updateReferencePhoto(projectId, filePath)
+            }
         }
+    }
+
+    suspend fun hasCaptureForToday(projectId: String): Boolean {
+        val today = todayString()
+        return captureEntryDao.getEntryForDate(projectId, today) != null
     }
 
     suspend fun updateReferencePhoto(projectId: String, filePath: String) {
         projectDao.updateReferencePhoto(projectId, filePath)
+    }
+
+    suspend fun updatePreferredCameraFacing(projectId: String, facing: String) {
+        projectDao.updatePreferredCameraFacing(projectId, facing)
     }
 
     suspend fun updateReminder(projectId: String, hour: Int?, minute: Int?) {

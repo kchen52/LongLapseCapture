@@ -56,6 +56,7 @@ fun ProjectListScreen(
     val context = LocalContext.current
     var projectsWithStats by remember { mutableStateOf<List<ProjectWithStats>>(emptyList()) }
     var showCreateDialog by remember { mutableStateOf(false) }
+    val today = remember { repository.todayString() }
 
     LaunchedEffect(Unit) {
         repository.observeProjectsWithStats().collectLatest { projectsWithStats = it }
@@ -87,8 +88,10 @@ fun ProjectListScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(projectsWithStats, key = { it.project.id }) { item ->
+                    val hasTodayCapture = item.project.lastCaptureDate == today
                     ProjectCard(
                         item = item,
+                        hasTodayCapture = hasTodayCapture,
                         onOpen = { onOpenProject(item.project.id) },
                         onCapture = { onOpenCamera(item.project.id) }
                     )
@@ -125,6 +128,7 @@ private const val EXPORT_FPS = 24
 @Composable
 private fun ProjectCard(
     item: ProjectWithStats,
+    hasTodayCapture: Boolean,
     onOpen: () -> Unit,
     onCapture: () -> Unit
 ) {
@@ -167,7 +171,10 @@ private fun ProjectCard(
                     Button(onClick = onOpen) {
                         Text("Details")
                     }
-                    TextButton(onClick = onCapture) {
+                    TextButton(
+                        onClick = onCapture,
+                        enabled = !hasTodayCapture
+                    ) {
                         Text("Capture")
                     }
                 }

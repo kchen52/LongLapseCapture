@@ -20,6 +20,9 @@ interface ProjectDao {
     @Query("UPDATE projects SET referencePhotoPath = :path WHERE id = :projectId")
     suspend fun updateReferencePhoto(projectId: String, path: String)
 
+    @Query("UPDATE projects SET preferredCameraFacing = :facing WHERE id = :projectId")
+    suspend fun updatePreferredCameraFacing(projectId: String, facing: String)
+
     @Query("UPDATE projects SET lastCaptureDate = :date, lastCapturePath = :path WHERE id = :projectId")
     suspend fun updateLastCapture(projectId: String, date: String, path: String)
 
