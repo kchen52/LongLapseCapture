@@ -1,5 +1,6 @@
 package dev.ktown.longlapsecapture.ui.screens
 
+import android.app.Activity
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.camera.core.CameraSelector
@@ -21,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,10 +41,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import coil3.compose.AsyncImage
 import dev.ktown.longlapsecapture.data.db.ProjectEntity
 import dev.ktown.longlapsecapture.data.repository.LonglapseRepository
@@ -84,6 +88,20 @@ fun CameraScreen(
         }
 
     BackHandler(onBack = onBack)
+
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        val activity = view.context as? Activity
+        if (activity != null) {
+            val insetsController = WindowCompat.getInsetsController(activity.window, view)
+            insetsController.hide(WindowInsetsCompat.Type.systemBars())
+            onDispose {
+                insetsController.show(WindowInsetsCompat.Type.systemBars())
+            }
+        } else {
+            onDispose { }
+        }
+    }
 
     LaunchedEffect(projectId) {
         val loaded = repository.getProject(projectId)
@@ -185,15 +203,12 @@ fun CameraScreen(
                         }
                     }
                 }
-                Row(
+                Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(24.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(24.dp)
                 ) {
-                    Spacer(modifier = Modifier.weight(1f))
                     val captureEnabled = !hasTodayCapture && imageCapture != null && project != null
                     val shutterColor = if (captureEnabled) {
                         MaterialTheme.colorScheme.onBackground
@@ -202,6 +217,7 @@ fun CameraScreen(
                     }
                     Box(
                         modifier = Modifier
+                            .align(Alignment.Center)
                             .size(80.dp)
                             .border(
                                 width = 4.dp,
@@ -255,8 +271,8 @@ fun CameraScreen(
                                 .background(shutterColor)
                         )
                     }
-                    Spacer(modifier = Modifier.weight(1f))
                     androidx.compose.material3.IconButton(
+                        modifier = Modifier.align(Alignment.CenterEnd),
                         onClick = {
                             val activeProject = project ?: return@IconButton
                             val newSelector =
