@@ -1,0 +1,204 @@
+package dev.ktown.longlapsecapture.ui.screens
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import coil3.compose.AsyncImage
+import dev.ktown.longlapsecapture.data.db.ProjectEntity
+import dev.ktown.longlapsecapture.data.repository.LonglapseRepository
+import kotlinx.coroutines.launch
+import java.io.File
+import java.time.LocalDate
+
+@Composable
+fun CameraScreen(
+    repository: LonglapseRepository,
+    projectId: String,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+    var project by remember { mutableStateOf<ProjectEntity?>(null) }
+    var imageCapture by remember { mutableStateOf<ImageCapture?>(null) }
+    val previewView = remember { PreviewView(context) }
+
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher =
+        androidx.activity.compose.rememberLauncherForActivityResult(
+            contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            hasCameraPermission = granted
+        }
+
+    BackHandler(onBack = onBack)
+
+    LaunchedEffect(projectId) {
+        project = repository.getProject(projectId)
+    }
+
+    LaunchedEffect(hasCameraPermission) {
+        if (hasCameraPermission) {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            val executor = ContextCompat.getMainExecutor(context)
+            cameraProviderFuture.addListener(
+                {
+                    val cameraProvider = cameraProviderFuture.get()
+                    val preview = Preview.Builder().build().apply {
+                        setSurfaceProvider(previewView.surfaceProvider)
+                    }
+                    val capture = ImageCapture.Builder()
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                        .build()
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                        capture
+                    )
+                    imageCapture = capture
+                },
+                executor
+            )
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.Filled.ArrowBack,
+                    contentDescription = "Back"
+                )
+                Text("Back", modifier = Modifier.padding(start = 6.dp))
+            }
+            Text(
+                text = project?.name ?: "Capture",
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+
+        if (!hasCameraPermission) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text("Camera permission is required to capture photos.")
+                Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
+                    Text("Grant permission")
+                }
+            }
+        } else {
+            Box(modifier = Modifier.fillMaxSize()) {
+                AndroidView(
+                    factory = { previewView },
+                    modifier = Modifier.fillMaxSize()
+                )
+                project?.referencePhotoPath?.let { reference ->
+                    AsyncImage(
+                        model = reference,
+                        contentDescription = "Reference overlay",
+                        modifier = Modifier.fillMaxSize(),
+                        alpha = 0.4f
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(24.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Button(
+                        onClick = {
+                            val capture = imageCapture ?: return@Button
+                            val activeProject = project ?: return@Button
+                            val today = LocalDate.now()
+                            val filePath = repository.photoFilePath(activeProject.id, today)
+                            val outputFile = File(filePath)
+                            val outputOptions =
+                                ImageCapture.OutputFileOptions.Builder(outputFile).build()
+                            capture.takePicture(
+                                outputOptions,
+                                ContextCompat.getMainExecutor(context),
+                                object : ImageCapture.OnImageSavedCallback {
+                                    override fun onImageSaved(
+                                        outputFileResults: ImageCapture.OutputFileResults
+                                    ) {
+                                        scope.launch {
+                                            val shouldSetReference =
+                                                activeProject.referencePhotoPath == null
+                                            repository.saveCapture(
+                                                projectId = activeProject.id,
+                                                localDate = today,
+                                                filePath = filePath,
+                                                setAsReference = shouldSetReference
+                                            )
+                                            onBack()
+                                        }
+                                    }
+
+                                    override fun onError(exception: ImageCaptureException) {
+                                        // No-op for now; capture errors can be surfaced later.
+                                    }
+                                }
+                            )
+                        }
+                    ) {
+                        Text("Capture")
+                    }
+                }
+            }
+        }
+    }
+}

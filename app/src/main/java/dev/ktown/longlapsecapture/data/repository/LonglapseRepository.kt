@@ -1,0 +1,105 @@
+package dev.ktown.longlapsecapture.data.repository
+
+import dev.ktown.longlapsecapture.data.db.CaptureEntryDao
+import dev.ktown.longlapsecapture.data.db.CaptureEntryEntity
+import dev.ktown.longlapsecapture.data.db.ProjectDao
+import dev.ktown.longlapsecapture.data.db.ProjectEntity
+import dev.ktown.longlapsecapture.data.storage.PhotoStorage
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.UUID
+
+data class ProjectWithStats(
+    val project: ProjectEntity,
+    val captureCount: Int,
+    val firstCaptureDate: String?,
+    val firstCapturePath: String?
+)
+
+class LonglapseRepository(
+    private val projectDao: ProjectDao,
+    private val captureEntryDao: CaptureEntryDao,
+    private val storage: PhotoStorage
+) {
+    private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+    fun observeProjects(): Flow<List<ProjectEntity>> = projectDao.observeProjects()
+
+    fun observeProjectsWithStats(): Flow<List<ProjectWithStats>> = flow {
+        projectDao.observeProjects().collect { projects ->
+            val withStats = projects.map { p ->
+                val count = captureEntryDao.getCaptureCount(p.id)
+                val firstDate = captureEntryDao.getFirstCaptureDate(p.id)
+                val firstPath = captureEntryDao.getFirstCapturePath(p.id)
+                ProjectWithStats(project = p, captureCount = count, firstCaptureDate = firstDate, firstCapturePath = firstPath)
+            }
+            emit(withStats)
+        }
+    }
+
+    fun observeEntries(projectId: String): Flow<List<CaptureEntryEntity>> =
+        captureEntryDao.observeEntries(projectId)
+
+    suspend fun getProject(projectId: String): ProjectEntity? = projectDao.getProject(projectId)
+
+    suspend fun createProject(
+        name: String,
+        reminderHour: Int?,
+        reminderMinute: Int?
+    ): ProjectEntity {
+        val now = System.currentTimeMillis()
+        val project = ProjectEntity(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            createdAt = now,
+            referencePhotoPath = null,
+            reminderHour = reminderHour,
+            reminderMinute = reminderMinute,
+            lastCaptureDate = null,
+            lastCapturePath = null
+        )
+        projectDao.insertProject(project)
+        return project
+    }
+
+    suspend fun saveCapture(
+        projectId: String,
+        localDate: LocalDate,
+        filePath: String,
+        setAsReference: Boolean
+    ) {
+        val dateString = localDate.format(dateFormatter)
+        val entry = CaptureEntryEntity(
+            projectId = projectId,
+            localDate = dateString,
+            filePath = filePath,
+            createdAt = System.currentTimeMillis()
+        )
+        captureEntryDao.insertEntry(entry)
+        projectDao.updateLastCapture(projectId, dateString, filePath)
+        if (setAsReference) {
+            projectDao.updateReferencePhoto(projectId, filePath)
+        }
+    }
+
+    suspend fun updateReferencePhoto(projectId: String, filePath: String) {
+        projectDao.updateReferencePhoto(projectId, filePath)
+    }
+
+    suspend fun updateReminder(projectId: String, hour: Int?, minute: Int?) {
+        projectDao.updateReminder(projectId, hour, minute)
+    }
+
+    fun todayString(): String = LocalDate.now().format(dateFormatter)
+
+    fun photoFilePath(projectId: String, localDate: LocalDate): String {
+        return storage.photoFileForDate(projectId, localDate.format(dateFormatter)).absolutePath
+    }
+
+    fun exportFilePath(projectId: String, suffix: String = "timelapse"): String {
+        val fileName = "${projectId}_$suffix.mp4"
+        return storage.exportDirectory().resolve(fileName).absolutePath
+    }
+}
