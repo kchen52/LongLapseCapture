@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -131,7 +132,11 @@ private fun ProjectCard(
     val firstDateFormatted = item.firstCaptureDate?.let { formatDisplayDate(it) } ?: "—"
     val videoDurationFormatted = formatVideoDuration(item.captureCount)
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()

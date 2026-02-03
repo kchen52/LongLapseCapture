@@ -37,6 +37,7 @@ fun LonglapseApp(
     val repository = remember { ServiceLocator.repository() }
     var screen by remember { mutableStateOf<Screen>(Screen.ProjectList) }
     var promptProject by remember { mutableStateOf<ProjectEntity?>(null) }
+    var reminderDismissedThisLaunch by remember { mutableStateOf(false) }
 
     val notificationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -54,6 +55,7 @@ fun LonglapseApp(
 
     LaunchedEffect(Unit) {
         repository.observeProjects().collectLatest { projects ->
+            if (reminderDismissedThisLaunch) return@collectLatest
             val today = repository.todayString()
             if (promptProject == null) {
                 promptProject = projects.firstOrNull { it.lastCaptureDate != today }
@@ -89,11 +91,15 @@ fun LonglapseApp(
 
     if (promptProject != null && screen is Screen.ProjectList) {
         AlertDialog(
-            onDismissRequest = { promptProject = null },
+            onDismissRequest = {
+                reminderDismissedThisLaunch = true
+                promptProject = null
+            },
             title = { Text("Take today's photo?") },
             text = { Text("Capture a new photo for ${promptProject?.name}.") },
             confirmButton = {
                 TextButton(onClick = {
+                    reminderDismissedThisLaunch = true
                     val projectId = promptProject?.id
                     promptProject = null
                     if (projectId != null) {
@@ -104,7 +110,10 @@ fun LonglapseApp(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { promptProject = null }) {
+                TextButton(onClick = {
+                    reminderDismissedThisLaunch = true
+                    promptProject = null
+                }) {
                     Text("Later")
                 }
             }

@@ -1,5 +1,6 @@
 package dev.ktown.longlapsecapture.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -48,6 +49,8 @@ fun ProjectDetailScreen(
     val scope = rememberCoroutineScope()
     var project by remember { mutableStateOf<ProjectEntity?>(null) }
     var entries by remember { mutableStateOf<List<CaptureEntryEntity>>(emptyList()) }
+
+    BackHandler(onBack = onBack)
     var exportStatus by remember { mutableStateOf<String?>(null) }
     val exporter = remember { TimelapseExporter(repository) }
 
