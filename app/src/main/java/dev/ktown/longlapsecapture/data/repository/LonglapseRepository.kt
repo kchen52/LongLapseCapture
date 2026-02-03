@@ -5,6 +5,7 @@ import dev.ktown.longlapsecapture.data.db.CaptureEntryEntity
 import dev.ktown.longlapsecapture.data.db.ProjectDao
 import dev.ktown.longlapsecapture.data.db.ProjectEntity
 import dev.ktown.longlapsecapture.data.storage.PhotoStorage
+import dev.ktown.longlapsecapture.ml.ReferenceSegmentationProcessor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import java.time.LocalDate
@@ -24,6 +25,12 @@ class LonglapseRepository(
     private val storage: PhotoStorage
 ) {
     private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+    private val segmentationProcessor by lazy {
+        ReferenceSegmentationProcessor(
+            context = storage.context,
+            storage = storage
+        )
+    }
 
     fun observeProjects(): Flow<List<ProjectEntity>> = projectDao.observeProjects()
 
@@ -85,6 +92,11 @@ class LonglapseRepository(
             projectDao.updateLastCapture(projectId, dateString, filePath)
             if (setAsReference) {
                 projectDao.updateReferencePhoto(projectId, filePath)
+                segmentationProcessor.generateSubjectMask(
+                    referencePath = filePath,
+                    projectId = projectId,
+                    localDate = dateString
+                )
             }
         }
     }
@@ -96,6 +108,14 @@ class LonglapseRepository(
 
     suspend fun updateReferencePhoto(projectId: String, filePath: String) {
         projectDao.updateReferencePhoto(projectId, filePath)
+        // Also (re)generate subject mask when user changes the reference.
+        val project = projectDao.getProject(projectId)
+        val date = project?.lastCaptureDate ?: return
+        segmentationProcessor.generateSubjectMask(
+            referencePath = filePath,
+            projectId = projectId,
+            localDate = date
+        )
     }
 
     suspend fun updatePreferredCameraFacing(projectId: String, facing: String) {
@@ -110,6 +130,11 @@ class LonglapseRepository(
 
     fun photoFilePath(projectId: String, localDate: LocalDate): String {
         return storage.photoFileForDate(projectId, localDate.format(dateFormatter)).absolutePath
+    }
+
+    fun referenceMaskPath(project: ProjectEntity): String? {
+        val date = project.lastCaptureDate ?: return null
+        return storage.referenceMaskFile(project.id, date).absolutePath
     }
 
     fun exportFilePath(projectId: String, suffix: String = "timelapse"): String {

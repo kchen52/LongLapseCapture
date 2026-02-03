@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Environment
 import java.io.File
 
-class PhotoStorage(private val context: Context) {
+class PhotoStorage(val context: Context) {
     private fun rootDirectory(): File {
         val base = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
             ?: context.filesDir
@@ -22,6 +22,11 @@ class PhotoStorage(private val context: Context) {
     fun photoFileForDate(projectId: String, localDate: String): File {
         val dir = projectDirectory(projectId)
         return File(dir, "$localDate.jpg")
+    }
+
+    fun referenceMaskFile(projectId: String, localDate: String): File {
+        val dir = projectDirectory(projectId)
+        return File(dir, "$localDate-mask.png")
     }
 
     fun exportDirectory(): File {

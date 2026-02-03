@@ -15,6 +15,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.LonglapseCapture">
+
+        <!-- Optional: pre-download ML Kit subject segmentation model -->
+        <meta-data
+            android:name="com.google.mlkit.vision.SUBJECT_SEGMENTATION"
+            android:value="optional" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -18,12 +18,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -131,33 +135,11 @@ fun CameraScreen(
                 text = project?.name ?: "Capture",
                 style = MaterialTheme.typography.titleMedium
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = {
-                    val activeProject = project ?: return@Button
-                    val newSelector =
-                        if (cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
-                            CameraSelector.DEFAULT_FRONT_CAMERA
-                        } else {
-                            CameraSelector.DEFAULT_BACK_CAMERA
-                        }
-                    cameraSelector = newSelector
-                    scope.launch {
-                        val facing = if (newSelector == CameraSelector.DEFAULT_FRONT_CAMERA) {
-                            "front"
-                        } else {
-                            "back"
-                        }
-                        repository.updatePreferredCameraFacing(activeProject.id, facing)
-                    }
-                }) {
-                    Text("Flip camera")
-                }
-                if (project?.referencePhotoPath != null) {
-                    Button(onClick = { subjectOnlyOverlay = !subjectOnlyOverlay }) {
-                        Text(
-                            if (subjectOnlyOverlay) "Full reference" else "Subject only"
-                        )
-                    }
+            if (project?.referencePhotoPath != null) {
+                Button(onClick = { subjectOnlyOverlay = !subjectOnlyOverlay }) {
+                    Text(
+                        if (subjectOnlyOverlay) "Full reference" else "Subject only"
+                    )
                 }
             }
         }
@@ -181,72 +163,123 @@ fun CameraScreen(
                     factory = { previewView },
                     modifier = Modifier.fillMaxSize()
                 )
-                project?.referencePhotoPath?.let { reference ->
-                    if (!subjectOnlyOverlay) {
-                        AsyncImage(
-                            model = reference,
-                            contentDescription = "Reference overlay",
-                            modifier = Modifier.fillMaxSize(),
-                            alpha = 0.4f
-                        )
-                    } else {
-                        AsyncImage(
-                            model = reference,
-                            contentDescription = "Reference subject overlay",
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(240.dp)
-                                .clip(CircleShape),
-                            contentScale = ContentScale.Crop,
-                            alpha = 0.6f
-                        )
+                project?.let { p ->
+                    p.referencePhotoPath?.let { reference ->
+                        if (!subjectOnlyOverlay) {
+                            AsyncImage(
+                                model = reference,
+                                contentDescription = "Reference overlay",
+                                modifier = Modifier.fillMaxSize(),
+                                alpha = 0.4f
+                            )
+                        } else {
+                            val maskPath = repository.referenceMaskPath(p)
+                            if (maskPath != null) {
+                                AsyncImage(
+                                    model = maskPath,
+                                    contentDescription = "Reference subject overlay",
+                                    modifier = Modifier.fillMaxSize(),
+                                    alpha = 0.6f
+                                )
+                            }
+                        }
                     }
                 }
                 Row(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
                         .padding(24.dp),
-                    horizontalArrangement = Arrangement.Center
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Button(
-                        enabled = !hasTodayCapture,
-                        onClick = {
-                            val capture = imageCapture ?: return@Button
-                            val activeProject = project ?: return@Button
-                            val today = LocalDate.now()
-                            val filePath = repository.photoFilePath(activeProject.id, today)
-                            val outputFile = File(filePath)
-                            val outputOptions =
-                                ImageCapture.OutputFileOptions.Builder(outputFile).build()
-                            capture.takePicture(
-                                outputOptions,
-                                ContextCompat.getMainExecutor(context),
-                                object : ImageCapture.OnImageSavedCallback {
-                                    override fun onImageSaved(
-                                        outputFileResults: ImageCapture.OutputFileResults
-                                    ) {
-                                        scope.launch {
-                                            val shouldSetReference =
-                                                activeProject.referencePhotoPath == null
-                                            repository.saveCapture(
-                                                projectId = activeProject.id,
-                                                localDate = today,
-                                                filePath = filePath,
-                                                setAsReference = shouldSetReference
-                                            )
-                                            hasTodayCapture = true
-                                            onBack()
+                    Spacer(modifier = Modifier.weight(1f))
+                    val captureEnabled = !hasTodayCapture && imageCapture != null && project != null
+                    val shutterColor = if (captureEnabled) {
+                        MaterialTheme.colorScheme.onBackground
+                    } else {
+                        MaterialTheme.colorScheme.onBackground.copy(alpha = 0.3f)
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(80.dp)
+                            .border(
+                                width = 4.dp,
+                                color = shutterColor,
+                                shape = CircleShape
+                            )
+                            .padding(6.dp)
+                            .clip(CircleShape)
+                            .background(shutterColor)
+                            .clickable(enabled = captureEnabled) {
+                                val capture = imageCapture ?: return@clickable
+                                val activeProject = project ?: return@clickable
+                                val today = LocalDate.now()
+                                val filePath = repository.photoFilePath(activeProject.id, today)
+                                val outputFile = File(filePath)
+                                val outputOptions =
+                                    ImageCapture.OutputFileOptions.Builder(outputFile).build()
+                                capture.takePicture(
+                                    outputOptions,
+                                    ContextCompat.getMainExecutor(context),
+                                    object : ImageCapture.OnImageSavedCallback {
+                                        override fun onImageSaved(
+                                            outputFileResults: ImageCapture.OutputFileResults
+                                        ) {
+                                            scope.launch {
+                                                val shouldSetReference =
+                                                    activeProject.referencePhotoPath == null
+                                                repository.saveCapture(
+                                                    projectId = activeProject.id,
+                                                    localDate = today,
+                                                    filePath = filePath,
+                                                    setAsReference = shouldSetReference
+                                                )
+                                                hasTodayCapture = true
+                                                onBack()
+                                            }
+                                        }
+
+                                        override fun onError(exception: ImageCaptureException) {
+                                            // No-op for now; capture errors can be surfaced later.
                                         }
                                     }
-
-                                    override fun onError(exception: ImageCaptureException) {
-                                        // No-op for now; capture errors can be surfaced later.
-                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(shutterColor)
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    androidx.compose.material3.IconButton(
+                        onClick = {
+                            val activeProject = project ?: return@IconButton
+                            val newSelector =
+                                if (cameraSelector == CameraSelector.DEFAULT_BACK_CAMERA) {
+                                    CameraSelector.DEFAULT_FRONT_CAMERA
+                                } else {
+                                    CameraSelector.DEFAULT_BACK_CAMERA
                                 }
-                            )
+                            cameraSelector = newSelector
+                            scope.launch {
+                                val facing = if (newSelector == CameraSelector.DEFAULT_FRONT_CAMERA) {
+                                    "front"
+                                } else {
+                                    "back"
+                                }
+                                repository.updatePreferredCameraFacing(activeProject.id, facing)
+                            }
                         }
                     ) {
-                        Text("Capture")
+                        Icon(
+                            imageVector = Icons.Filled.Cameraswitch,
+                            contentDescription = "Flip camera"
+                        )
                     }
                 }
             }

@@ -11,6 +11,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dev.ktown.longlapsecapture.MainActivity
 import dev.ktown.longlapsecapture.R
+import dev.ktown.longlapsecapture.di.ServiceLocator
 
 class DailyReminderWorker(
     appContext: Context,
@@ -19,6 +20,11 @@ class DailyReminderWorker(
     override suspend fun doWork(): Result {
         val projectId = inputData.getString(KEY_PROJECT_ID) ?: return Result.failure()
         val projectName = inputData.getString(KEY_PROJECT_NAME) ?: "your project"
+
+        val repository = ServiceLocator.repository()
+        if (repository.hasCaptureForToday(projectId)) {
+            return Result.success()
+        }
 
         val notificationManager =
             applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
