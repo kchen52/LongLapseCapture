@@ -1,6 +1,11 @@
 package dev.ktown.longlapsecapture.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,9 +33,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import coil3.compose.AsyncImage
 import dev.ktown.longlapsecapture.data.db.CaptureEntryEntity
 import dev.ktown.longlapsecapture.data.db.ProjectEntity
@@ -54,6 +62,31 @@ fun ProjectDetailScreen(
     BackHandler(onBack = onBack)
     var exportStatus by remember { mutableStateOf<String?>(null) }
     val exporter = remember { TimelapseExporter(repository) }
+    val context = LocalContext.current
+    val latestEntries by rememberUpdatedState(entries)
+    val startExportVideo: () -> Unit = {
+        exportStatus = "Exporting..."
+        scope.launch {
+            val output = exporter.exportTimelapse(
+                projectId = projectId,
+                entries = latestEntries,
+                fps = 24
+            )
+            exportStatus = output.fold(
+                onSuccess = { "Saved to $it" },
+                onFailure = { "Export failed: ${it.message}" }
+            )
+        }
+    }
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startExportVideo()
+        } else {
+            exportStatus = "Storage permission is required to save to Downloads"
+        }
+    }
 
     LaunchedEffect(projectId) {
         project = repository.getProject(projectId)
@@ -107,17 +140,21 @@ fun ProjectDetailScreen(
                 }
                 Button(
                     onClick = {
-                        exportStatus = "Exporting..."
-                        scope.launch {
-                            val output = exporter.exportTimelapse(
-                                projectId = projectId,
-                                entries = entries,
-                                fps = 24
-                            )
-                            exportStatus = output.fold(
-                                onSuccess = { "Saved to $it" },
-                                onFailure = { "Export failed: ${it.message}" }
-                            )
+                        val needsLegacyWrite = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
+                        if (needsLegacyWrite) {
+                            when (
+                                ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                                )
+                            ) {
+                                PackageManager.PERMISSION_GRANTED -> startExportVideo()
+                                else -> storagePermissionLauncher.launch(
+                                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                                )
+                            }
+                        } else {
+                            startExportVideo()
                         }
                     },
                     enabled = entries.isNotEmpty()

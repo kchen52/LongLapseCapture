@@ -23,9 +23,10 @@ class TimelapseExporter(
         if (entries.isEmpty()) return Result.failure(IllegalStateException("No entries to export"))
 
         return withContext(Dispatchers.Default) {
-            val outputPath = repository.exportFilePath(projectId)
             val firstBitmap = BitmapFactory.decodeFile(entries.first().filePath)
                 ?: return@withContext Result.failure(IllegalStateException("Failed to load first image"))
+
+            val exportHandle = repository.openTimelapseExport(projectId)
 
             val targetWidth = 1280
             val scaledHeight = (firstBitmap.height * targetWidth.toFloat() / firstBitmap.width).toInt()
@@ -40,14 +41,13 @@ class TimelapseExporter(
 
             val encoder = MediaCodec.createEncoderByType(VIDEO_MIME_TYPE)
             val bufferInfo = MediaCodec.BufferInfo()
-            var muxer: MediaMuxer? = null
+            var muxer: MediaMuxer? = exportHandle.muxer
             val muxerState = MuxerState()
             var ptsUs = 0L
 
             try {
                 encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 encoder.start()
-                muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
 
                 for (entry in entries) {
                     val bitmap = BitmapFactory.decodeFile(entry.filePath) ?: continue
@@ -62,7 +62,7 @@ class TimelapseExporter(
                 queueInput(encoder, ByteArray(0), ptsUs, endOfStream = true)
                 drainEncoder(encoder, muxer, bufferInfo, true, muxerState)
 
-                Result.success(outputPath)
+                Result.success(exportHandle.savedLocationDescription)
             } catch (ex: Exception) {
                 Result.failure(ex)
             } finally {
@@ -84,6 +84,7 @@ class TimelapseExporter(
                     muxer?.release()
                 } catch (_: Exception) {
                 }
+                exportHandle.closeAfterMuxerFinished()
             }
         }
     }

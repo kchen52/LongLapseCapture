@@ -29,6 +29,37 @@ private sealed class Screen {
     data class Camera(val projectId: String) : Screen()
 }
 
+internal enum class LaunchTarget {
+    PROJECT_LIST,
+    PROJECT_DETAIL,
+    CAMERA
+}
+
+internal fun resolveLaunchTarget(
+    startProjectId: String?,
+    startInCamera: Boolean,
+    hasCaptureForToday: Boolean
+): LaunchTarget? {
+    if (startProjectId == null) return null
+    return if (startInCamera && !hasCaptureForToday) {
+        LaunchTarget.CAMERA
+    } else if (startInCamera) {
+        LaunchTarget.PROJECT_LIST
+    } else {
+        LaunchTarget.PROJECT_DETAIL
+    }
+}
+
+internal fun selectPromptProject(
+    projects: List<ProjectEntity>,
+    today: String,
+    currentPromptId: String?
+): ProjectEntity? {
+    return projects.firstOrNull { project ->
+        project.lastCaptureDate != today && (currentPromptId == null || project.id == currentPromptId)
+    } ?: projects.firstOrNull { it.lastCaptureDate != today }
+}
+
 @Composable
 fun LonglapseApp(
     startProjectId: String?,
@@ -44,12 +75,15 @@ fun LonglapseApp(
     ) { }
 
     LaunchedEffect(startProjectId, startInCamera) {
-        if (startProjectId != null) {
-            screen = if (startInCamera) {
-                Screen.Camera(startProjectId)
-            } else {
-                Screen.ProjectDetail(startProjectId)
-            }
+        when (resolveLaunchTarget(
+            startProjectId = startProjectId,
+            startInCamera = startInCamera,
+            hasCaptureForToday = startProjectId?.let { repository.hasCaptureForToday(it) } ?: false
+        )) {
+            LaunchTarget.CAMERA -> screen = Screen.Camera(requireNotNull(startProjectId))
+            LaunchTarget.PROJECT_DETAIL -> screen = Screen.ProjectDetail(requireNotNull(startProjectId))
+            LaunchTarget.PROJECT_LIST -> screen = Screen.ProjectList
+            null -> Unit
         }
     }
 
@@ -57,9 +91,11 @@ fun LonglapseApp(
         repository.observeProjects().collectLatest { projects ->
             if (reminderDismissedThisLaunch) return@collectLatest
             val today = repository.todayString()
-            if (promptProject == null) {
-                promptProject = projects.firstOrNull { it.lastCaptureDate != today }
-            }
+            promptProject = selectPromptProject(
+                projects = projects,
+                today = today,
+                currentPromptId = promptProject?.id
+            )
         }
     }
 

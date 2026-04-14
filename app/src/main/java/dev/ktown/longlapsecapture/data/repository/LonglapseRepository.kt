@@ -5,6 +5,7 @@ import dev.ktown.longlapsecapture.data.db.CaptureEntryEntity
 import dev.ktown.longlapsecapture.data.db.ProjectDao
 import dev.ktown.longlapsecapture.data.db.ProjectEntity
 import dev.ktown.longlapsecapture.data.storage.PhotoStorage
+import dev.ktown.longlapsecapture.data.storage.TimelapseExportHandle
 import dev.ktown.longlapsecapture.ml.ReferenceSegmentationProcessor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -137,8 +138,8 @@ class LonglapseRepository(
         return storage.referenceMaskFile(project.id, date).absolutePath
     }
 
-    fun exportFilePath(projectId: String, suffix: String = "timelapse"): String {
+    fun openTimelapseExport(projectId: String, suffix: String = "timelapse"): TimelapseExportHandle {
         val fileName = "${projectId}_$suffix.mp4"
-        return storage.exportDirectory().resolve(fileName).absolutePath
+        return storage.openTimelapseExportToDownloads(fileName)
     }
 }
